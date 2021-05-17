@@ -75,10 +75,25 @@ model = HFet(label_size,
 if gpu:
     model.cuda()
 
+#print(model)
+#exit()
+
+param_groups = [               
+    {
+        'params': [p for n, p in model.named_parameters() if (n.startswith('bert')|n.startswith('BERT'))],
+        'lr': 5e-5, 'weight_decay': 1e-5
+    },    
+    {
+        'params': [p for n, p in model.named_parameters() if not (n.startswith('bert')|n.startswith('BERT'))],
+        'lr': args.lr, 'weight_decay': args.weight_decay
+    },
+]
+
 batch_size = args.batch_size
 batch_num = len(train_set) // batch_size
 total_step = args.max_epoch * batch_num
-optimizer = BertAdam(filter(lambda x: x.requires_grad, model.parameters()),
+#optimizer = BertAdam(filter(lambda x: x.requires_grad, model.parameters()),
+optimizer = BertAdam(param_groups,
                          lr=args.lr, warmup=.1,
                          weight_decay=args.weight_decay,
                          t_total=total_step)
@@ -110,6 +125,8 @@ for epoch in range(args.max_epoch):
             elmos, labels, men_masks, ctx_masks, dists,
             gathers, men_ids,
         ) = batch
+        #print(batch_size,len(labels))
+        #exit()
         loss = model.forward(elmos, labels, men_masks, ctx_masks, dists,
                              gathers, None)
         loss.backward()
@@ -122,7 +139,7 @@ for epoch in range(args.max_epoch):
         # Dev set
         best_acc, best_mac, best_mic = False, False, False
         results = defaultdict(list)
-        for batch in dev_set.all_batches(label_size, batch_size=100, gpu=gpu):
+        for batch in dev_set.all_batches(label_size, batch_size=10, gpu=gpu, dev=True):
             elmo_ids, labels, men_masks, ctx_masks, dists, gathers, men_ids = batch
             preds = model.predict(elmo_ids, men_masks, ctx_masks, dists, gathers)
             results['gold'].extend(labels.int().data.tolist())
@@ -157,7 +174,7 @@ for epoch in range(args.max_epoch):
 
         # Test set
         results = defaultdict(list)
-        for batch in test_set.all_batches(label_size, batch_size=100, gpu=gpu):
+        for batch in test_set.all_batches(label_size, batch_size=10, gpu=gpu, dev=True):
             elmo_ids, labels, men_masks, ctx_masks, dists, gathers, men_ids = batch
             preds = model.predict(elmo_ids, men_masks, ctx_masks, dists,
                                   gathers)
